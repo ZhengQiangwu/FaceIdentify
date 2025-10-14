@@ -1,0 +1,4 @@
+/home/awu666/lib/MyPorject/ArcSoft_ArcFace_Linux_x64_V3.0/samplecode/ASFTestDemo/build/CMakeFiles/face_api.dir
+/home/awu666/lib/MyPorject/ArcSoft_ArcFace_Linux_x64_V3.0/samplecode/ASFTestDemo/build/CMakeFiles/api_test_client.dir
+/home/awu666/lib/MyPorject/ArcSoft_ArcFace_Linux_x64_V3.0/samplecode/ASFTestDemo/build/CMakeFiles/edit_cache.dir
+/home/awu666/lib/MyPorject/ArcSoft_ArcFace_Linux_x64_V3.0/samplecode/ASFTestDemo/build/CMakeFiles/rebuild_cache.dir
