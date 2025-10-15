@@ -47,6 +47,16 @@ API_EXPORT int InitFaceEngine();
 API_EXPORT FaceRect* DetectFacesDynamic(unsigned char* bgrImageData, int width, int height, int* outFaceCount);
 
 /**
+ * @brief 通过本地图片文件路径进行人脸检测。
+ *
+ * @param imagePath 指向图片文件路径的UTF-8编码字符串。
+ * @param outFaceCount [out] 一个整型指针，用于接收检测到的人脸数量。
+ * @return FaceRect* 返回一个指向FaceRect数组的指针。如果未检测到人脸或图片加载失败，返回nullptr。
+ * @warning 返回的指针必须通过调用 FreeFaceData() 来释放！
+ */
+API_EXPORT FaceRect* DetectFacesDynamicFromFile(const char* imagePath, int* outFaceCount);
+
+/**
  * @brief 释放由 DetectFacesDynamic 函数分配的内存。
  * @details 这个函数必须被调用以防止内存泄漏。它会安全地检查指针是否为null。
  * @param faceData DetectFacesDynamic函数返回的指针。

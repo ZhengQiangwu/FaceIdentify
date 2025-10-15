@@ -103,84 +103,110 @@ int InitFaceEngine()
     return MOK;
 }
 
+// =========================================================================
+// 内部辅助函数，处理所有核心检测逻辑，避免代码重复
+// =========================================================================
+static FaceRect* PerformFaceDetection(const cv::Mat& image, int* outFaceCount)
+{
+    // 检查输入图像是否有效
+    if (image.empty()) {
+        *outFaceCount = 0;
+        return nullptr;
+    }
+
+    // 确保图像是3通道的
+    if (image.channels() != 3) {
+        printf("Error: Input image must be a 3-channel BGR image.\n");
+        *outFaceCount = 0;
+        return nullptr;
+    }
+
+    // 虹软SDK要求图像宽度为4的倍数
+    int new_width = image.cols - (image.cols % 4);
+    if (new_width == 0) {
+        *outFaceCount = 0;
+        return nullptr;
+    }
+    cv::Mat processed_mat = image(cv::Rect(0, 0, new_width, image.rows));
+
+    // 3. 填充 ASVLOFFSCREEN 结构体，使用Ex接口
+    ASVLOFFSCREEN offscreen = { 0 };
+    offscreen.u32PixelArrayFormat = ASVL_PAF_RGB24_B8G8R8;
+    offscreen.i32Width = processed_mat.cols;
+    offscreen.i32Height = processed_mat.rows;
+    offscreen.pi32Pitch[0] = (int)processed_mat.step;// 使用cv::Mat的step属性，它包含了内存对齐
+    offscreen.ppu8Plane[0] = (MUInt8*)processed_mat.data;
+
+    // 4. 进行人脸检测
+    ASF_MultiFaceInfo detectedFaces = { 0 };
+    MRESULT res = ASFDetectFacesEx(g_faceEngineHandle, &offscreen, &detectedFaces);
+    if (res != MOK || detectedFaces.faceNum == 0) {
+        *outFaceCount = 0;
+        return nullptr;
+    }
+
+    // 5. 根据检测到的数量动态分配内存
+    FaceRect* results = (FaceRect*)malloc(detectedFaces.faceNum * sizeof(FaceRect));
+    if (!results) {
+        *outFaceCount = 0;
+        return nullptr;
+    }
+
+    // 6. 拷贝坐标数据
+    for (int i = 0; i < detectedFaces.faceNum; ++i) {
+        results[i].left = detectedFaces.faceRect[i].left;
+        results[i].top = detectedFaces.faceRect[i].top;
+        results[i].right = detectedFaces.faceRect[i].right;
+        results[i].bottom = detectedFaces.faceRect[i].bottom;
+    }
+
+    *outFaceCount = detectedFaces.faceNum;
+    return results;
+}
+
 /**
- * @brief 对传入的BGR图像数据进行人脸检测
+ * @brief 对传入的BGR图像数据进行人脸检测，动态分配内存
  */
 FaceRect* DetectFacesDynamic(unsigned char* bgrImageData, int width, int height, int* outFaceCount)
 {
-    // 检查引擎是否已初始化
-    if (!g_faceEngineHandle) {
-        printf("Engine not initialized. Please call InitFaceEngine first.\n");
-        if (outFaceCount) *outFaceCount = 0; // 安全地设置输出参数
-        return nullptr; // 返回空指针表示失败
-    }
-
-    // 检查传入的参数是否有效
-    if (!bgrImageData || width <= 0 || height <= 0 || !outFaceCount) {
-        printf("Input parameters are invalid.\n");
+    if (!g_faceEngineHandle || !bgrImageData || width <= 0 || height <= 0 || !outFaceCount) {
         if (outFaceCount) *outFaceCount = 0;
         return nullptr;
     }
 
-	// 1. 将传入的 unsigned char* data 包装成 cv::Mat 对象。
-	//    我们假设传入的数据是 BGR 格式，这与 OpenCV 的 CV_8UC3 默认格式一致。
-	cv::Mat mat(height, width, CV_8UC3, bgrImageData);
-	if (mat.empty())
-	{
-		printf("Failed to create Mat from input data.\n");
-		*outFaceCount = 0;
-		return nullptr;
-	}
-
-	// 2. 直接使用 cv::Mat 的属性来填充 ASVLOFFSCREEN 结构体
-	ASVLOFFSCREEN offscreen = { 0 };
-	offscreen.u32PixelArrayFormat = ASVL_PAF_RGB24_B8G8R8; // 虹软SDK中与BGR对应的格式
-	offscreen.i32Width = mat.cols;
-	offscreen.i32Height = mat.rows;
-	offscreen.ppu8Plane[0] = mat.data; // 直接使用Mat的数据指针
-	offscreen.pi32Pitch[0] = mat.step; // **关键**：使用Mat的step属性，它考虑了内存对齐
-
-	// 3. 对这张图像进行人脸检测
-	ASF_MultiFaceInfo detectedFaces = { 0 };
-	MRESULT res = ASFDetectFacesEx(g_faceEngineHandle, &offscreen, &detectedFaces);
-	
-	if (res != MOK || detectedFaces.faceNum == 0)
-	{
-        // 如果检测失败或没有检测到人脸
-		if (res != MOK)
-        {
-            printf("ASFDetectFacesEx fail, res_code: %d\n", res);
-        }
-        *outFaceCount = 0;
-        return nullptr; // 返回空指针
-	}
-    
-    // 4. 新增核心逻辑：根据检测到的人脸数量，动态分配内存
-    // 使用 C-style 的 malloc，因为它与 free 配对，是跨语言 ABI 最稳定的方式
-    FaceRect* result_buffer = (FaceRect*)malloc(detectedFaces.faceNum * sizeof(FaceRect));
-    if (!result_buffer) 
-    {
-        // 内存分配失败是一种严重的运行时错误
-        printf("Error: Failed to allocate memory for face results.\n");
+    // 1. 将传入的裸数据包装成 cv::Mat，这是现代、安全的方式
+    cv::Mat mat(height, width, CV_8UC3, bgrImageData);
+    if (mat.empty()) {
         *outFaceCount = 0;
         return nullptr;
     }
-    
-    // 5. 将检测到的人脸坐标拷贝到新分配的内存中
-    for (int i = 0; i < detectedFaces.faceNum; ++i) 
-    {
-        result_buffer[i].left   = detectedFaces.faceRect[i].left;
-        result_buffer[i].top    = detectedFaces.faceRect[i].top;
-        result_buffer[i].right  = detectedFaces.faceRect[i].right;
-        result_buffer[i].bottom = detectedFaces.faceRect[i].bottom;
+
+    // 2. 调用通用的核心处理函数
+    return PerformFaceDetection(mat, outFaceCount);
+}
+
+/**
+ * @brief 通过文件路径加载图片并检测
+ */
+FaceRect* DetectFacesDynamicFromFile(const char* imagePath, int* outFaceCount)
+{
+    if (!g_faceEngineHandle || !imagePath || !outFaceCount) {
+        if (outFaceCount) *outFaceCount = 0;
+        return nullptr;
     }
 
-    // 6. 通过输出参数返回人脸的实际数量
-    *outFaceCount = detectedFaces.faceNum;
+    // 1. 使用OpenCV从文件加载图像
+    cv::Mat image = cv::imread(imagePath);
+    if (image.empty()) {
+        printf("Error: Failed to load image from path: %s\n", imagePath);
+        *outFaceCount = 0;
+        return nullptr;
+    }
 
-    // 7. 返回指向新分配内存的指针
-    return result_buffer;
+    // 2. 调用通用的核心处理函数
+    return PerformFaceDetection(image, outFaceCount);
 }
+
 
 /**
  * @brief 释放内存
