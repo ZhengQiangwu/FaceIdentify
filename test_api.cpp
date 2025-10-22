@@ -8,6 +8,18 @@
 // 2. 包含我们自己库的API头文件
 //    假设这个头文件在 ./inc 目录下
 #include "inc/face_api.h" 
+// --- 新增：添加这两个头文件 ---
+#include <unistd.h>  // 为了 getcwd
+#include <limits.h>  // 为了 PATH_MAX
+
+void PrintCurrentWorkingDirectory() {
+    char current_path[PATH_MAX];
+    if (getcwd(current_path, sizeof(current_path)) != NULL) {
+        std::cout << "==> 当前工作目录是: " << current_path << std::endl;
+    } else {
+        perror("getcwd() error");
+    }
+}
 
 int main(int argc, char* argv[])
 {
@@ -20,7 +32,10 @@ int main(int argc, char* argv[])
     }
     std::string imagePath = argv[1];
 
-    // --- 步骤 1: 初始化引擎 ---
+    std::cout << "程序启动..." << std::endl;
+    PrintCurrentWorkingDirectory();
+
+    // --- 步骤 2: 初始化引擎 ---
     std::cout << "正在调用 InitFaceEngine()..." << std::endl;
     int ret = InitFaceEngine();
     if (ret != 0)
@@ -31,6 +46,7 @@ int main(int argc, char* argv[])
     std::cout << "引擎初始化成功！" << std::endl;
     std::cout << "------------------------------------" << std::endl;
 
+    PrintCurrentWorkingDirectory();
     // --- 步骤 2: 加载要测试的图片 ---
     cv::Mat image = cv::imread(imagePath);
     if (image.empty())
